@@ -5,7 +5,7 @@ DEVICE=${1:-/dev/ttyUSB0}
 SYMLINK_NAME=${2:-custom_usb}
 RULE_FILE="${SYMLINK_NAME}.rules"
 
-echo "🚀 开始绑定 USB 串口设备"
+echo "🚀 开始绑定 USB 设备"
 echo "📌 目标设备: $DEVICE"
 echo "🔖 设备别名: /dev/$SYMLINK_NAME"
 
@@ -16,23 +16,30 @@ if [ ! -e "$DEVICE" ]; then
 fi
 
 # 2️⃣ 获取 KERNELS 路径（用于唯一标识设备）
-# KERNELS_PATH=$(udevadm info -a -n "$DEVICE" | grep -m 1 'KERNELS==' | head -n1 | sed 's/^[ \t]*//;s/"//g' | cut -d'=' -f2)
 KERNELS_PATH=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/KERNELS==/ { gsub(/"/, "", $2); print $2; exit }')
 if [ -z "$KERNELS_PATH" ]; then
     echo "❌ 无法获取设备的 KERNELS 路径，无法区分设备。"
     exit 1
 fi
 
-# 3️⃣ 判断设备类型（ttyUSB / ttyACM）
-KERNEL_TYPE=$(basename "$DEVICE" | grep -oE '^tty(USB|ACM)')
+# 3️⃣ 判断设备类型（ttyUSB / ttyACM 或 video / sound）
+KERNEL_TYPE=$(basename "$DEVICE" | grep -oE '^tty(USB|ACM)|video|snd')
 
 if [ -z "$KERNEL_TYPE" ]; then
-    echo "❌ 不支持的设备类型。仅支持 ttyUSB* 或 ttyACM*"
+    echo "❌ 不支持的设备类型。仅支持 ttyUSB*, ttyACM*, video*, snd*"
     exit 1
 fi
 
 # 4️⃣ 构建 udev 规则
-RULE="KERNEL==\"${KERNEL_TYPE}*\", KERNELS==\"${KERNELS_PATH}\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
+if [[ "$KERNEL_TYPE" == "ttyUSB" || "$KERNEL_TYPE" == "ttyACM" ]]; then
+    RULE="KERNEL==\"${KERNEL_TYPE}*\", KERNELS==\"${KERNELS_PATH}\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
+elif [[ "$KERNEL_TYPE" == "video" ]]; then
+    # 摄像头设备规则
+    RULE="KERNEL==\"video*\", KERNELS==\"${KERNELS_PATH}\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
+elif [[ "$KERNEL_TYPE" == "snd" ]]; then
+    # 麦克风设备规则
+    RULE="SUBSYSTEM==\"sound\", KERNELS==\"${KERNELS_PATH}\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
+fi
 
 # 5️⃣ 写入临时规则文件
 echo "📝 正在生成规则文件：$RULE_FILE"
