@@ -15,16 +15,12 @@ if [ ! -e "$DEVICE" ]; then
     exit 1
 fi
 
-# 2️⃣ 获取 KERNELS 路径（用于唯一标识设备）
-KERNELS_PATH=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/KERNELS==/ { gsub(/"/, "", $2); print $2; exit }')
-if [ -z "$KERNELS_PATH" ]; then
-    echo "❌ 无法获取设备的 KERNELS 路径，无法区分设备。"
-    exit 1
-fi
+# 2️⃣ 获取设备的唯一标识符（idVendor 和 idProduct）通过 lsusb
+LSUSB_OUTPUT=$(lsusb)
+VENDOR_ID=$(echo "$LSUSB_OUTPUT" | grep -i "Webcam" | awk '{print $6}' | cut -d':' -f1)
+PRODUCT_ID=$(echo "$LSUSB_OUTPUT" | grep -i "Webcam" | awk '{print $6}' | cut -d':' -f2)
 
-# 3️⃣ 获取摄像头的唯一标识符（如 idVendor, idProduct, serial）
-VENDOR_ID=$(udevadm info -a -n "$DEVICE" | grep -m 1 'ATTRS{idVendor}' | sed 's/.*"//;s/"//')
-PRODUCT_ID=$(udevadm info -a -n "$DEVICE" | grep -m 1 'ATTRS{idProduct}' | sed 's/.*"//;s/"//')
+# 3️⃣ 获取摄像头的 serial number
 SERIAL_NUMBER=$(udevadm info -a -n "$DEVICE" | grep -m 1 'ATTRS{serial}' | sed 's/.*"//;s/"//')
 
 if [ -z "$VENDOR_ID" ] || [ -z "$PRODUCT_ID" ]; then
