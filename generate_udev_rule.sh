@@ -15,24 +15,30 @@ if [ ! -e "$DEVICE" ]; then
     exit 1
 fi
 
-# 2️⃣ 获取 KERNELS 路径（用于唯一标识设备）
-# KERNELS_PATH=$(udevadm info -a -n "$DEVICE" | grep -m 1 'KERNELS==' | head -n1 | sed 's/^[ \t]*//;s/"//g' | cut -d'=' -f2)
-KERNELS_PATH=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/KERNELS==/ { gsub(/"/, "", $2); print $2; exit }')
-if [ -z "$KERNELS_PATH" ]; then
-    echo "❌ 无法获取设备的 KERNELS 路径，无法区分设备。"
+# 2️⃣ 获取 idVendor、idProduct、serial
+ID_VENDOR=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/idVendor/ {gsub(/"/, "", $2); print $2; exit}')
+ID_PRODUCT=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/idProduct/ {gsub(/"/, "", $2); print $2; exit}')
+ID_SERIAL=$(udevadm info -a -n "$DEVICE" | awk -F'==' '/serial/ {gsub(/"/, "", $2); print $2; exit}')
+
+# 检查是否获取成功
+if [ -z "$ID_VENDOR" ] || [ -z "$ID_PRODUCT" ]; then
+    echo "❌ 无法获取 idVendor 或 idProduct"
     exit 1
 fi
+if [ -z "$ID_SERIAL" ]; then
+    echo "⚠️ 设备没有唯一序列号，可能会和相同型号设备冲突！"
+    ID_SERIAL="*"
+fi
 
-# 3️⃣ 判断设备类型（ttyUSB / ttyACM）
+# 3️⃣ 判断设备类型
 KERNEL_TYPE=$(basename "$DEVICE" | grep -oE '^tty(USB|ACM)')
-
 if [ -z "$KERNEL_TYPE" ]; then
     echo "❌ 不支持的设备类型。仅支持 ttyUSB* 或 ttyACM*"
     exit 1
 fi
 
 # 4️⃣ 构建 udev 规则
-RULE="KERNEL==\"${KERNEL_TYPE}*\", KERNELS==\"${KERNELS_PATH}\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
+RULE="SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$ID_VENDOR\", ATTRS{idProduct}==\"$ID_PRODUCT\", ATTRS{serial}==\"$ID_SERIAL\", MODE=\"0777\", SYMLINK+=\"${SYMLINK_NAME}\""
 
 # 5️⃣ 写入临时规则文件
 echo "📝 正在生成规则文件：$RULE_FILE"
